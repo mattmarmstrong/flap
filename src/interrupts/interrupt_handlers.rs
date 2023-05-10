@@ -11,7 +11,17 @@ pub struct InterruptStackFrame {
     stack_segment: u64,
 }
 
-pub extern "x86-interrupt" fn segment_not_present_exception_handler(
+pub extern "x86-interrupt" fn double_fault_handler(
+    stack_frame: InterruptStackFrame,
+    error_code: u64,
+) {
+    println!("EXCEPTION: DOUBLE FAULT");
+    println!("ERROR CODE: {:#?}", error_code);
+    println!("{:#?}", stack_frame);
+    panic!();
+}
+
+pub extern "x86-interrupt" fn segment_not_present_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
@@ -25,7 +35,7 @@ pub extern "x86-interrupt" fn stack_segment_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {
-    println!("EXCEPTION: SEGMENT NOT PRESENT");
+    println!("EXCEPTION: STACK SEGMENT FAULT");
     println!("ERROR CODE: {:#?}", error_code);
     println!("{:#?}", stack_frame);
     panic!();
