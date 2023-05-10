@@ -144,16 +144,6 @@ impl GateOptions {
     }
 }
 
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct InterruptStackFrame {
-    instruction_pointer: VirtualAddress,
-    code_segment: u64,
-    cpu_flags: u64, //EFLAGS
-    stack_pointer: VirtualAddress,
-    stack_segment: u64, // Almost always zero
-}
-
 lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
