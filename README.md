@@ -10,15 +10,22 @@ I have no idea how far I'll actually get with this, but I've really enjoyed usin
 Reading List:
 
 https://docs.kernel.org/arch/x86/index.html
+
 https://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-3a-part-1-manual.pdf
+
 https://wiki.osdev.org/
 
 
 Other cool repos I've been using as references:
 https://github.com/klange/toaruos
+
 https://github.com/vinc/moros
+
 https://github.com/torvalds/linux
+
 https://github.com/avsm/xen-minios/
+
 https://github.com/cia-foundation/TempleOS
+
 
 
