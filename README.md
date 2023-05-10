@@ -1,9 +1,13 @@
 # flap
 A hobby OS, brought to you by the Rust Foundation ©️
 
-I started this following: https://github.com/phil-opp/blog_os
+I started this following: 
 
-I also heavily plagarized code from the x86_64 crate in some sections: https://github.com/rust-osdev/x86_64/
+https://github.com/phil-opp/blog_os
+
+I also heavily plagarized code from the x86_64 crate in some sections: 
+
+https://github.com/rust-osdev/x86_64/
 
 I have no idea how far I'll actually get with this, but I've really enjoyed using this as an opportunity to learn about Operating Systems. 
 
@@ -17,6 +21,7 @@ https://wiki.osdev.org/
 
 
 Other cool repos I've been using as references:
+
 https://github.com/klange/toaruos
 
 https://github.com/vinc/moros
