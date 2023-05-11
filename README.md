@@ -9,7 +9,7 @@ I also heavily plagarized code from the x86_64 crate in some sections:
 
 https://github.com/rust-osdev/x86_64/
 
-I have no idea how far I'll actually get with this, but I've really enjoyed using this as an opportunity to learn about Operating Systems. 
+I have no idea how far I'll actually get with this, but I've really enjoyed using this as an opportunity to learn about operating systems. 
 
 Reading List:
 
