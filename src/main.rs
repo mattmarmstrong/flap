@@ -7,17 +7,13 @@
 
 use core::panic::PanicInfo;
 
-use x86_64::instructions::hlt;
-
 use flap_os::println;
 
 #[cfg(not(test))]
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     println!("{}", info);
-    loop {
-        hlt();
-    }
+    loop {}
 }
 
 #[cfg(test)]
@@ -28,9 +24,7 @@ fn panic(info: &PanicInfo) -> ! {
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
-    println!("...initializing gdt...");
     flap_os::kernel_init();
-    println!("...[ok]");
 
     #[cfg(test)]
     test_main();

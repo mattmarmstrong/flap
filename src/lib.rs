@@ -5,17 +5,34 @@
 #![test_runner(crate::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
+use core::arch::asm;
 use core::panic::PanicInfo;
-use x86_64::instructions::hlt;
 
-pub mod addr;
 pub mod interrupts;
+pub mod memory;
 pub mod serial;
 pub mod structs;
 pub mod vga;
 
 pub fn kernel_init() {
-    structs::gdt::init();
+    println!("Loading GDT...");
+    structs::gdt::init_gdt();
+    println!("...[ok]");
+    println!("Loading IDT...");
+    structs::idt::init_idt();
+    println!("...[ok]");
+}
+
+// TODO: This needs some TLC. Write a good port struct with methods that make sense
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct Port(u16);
+
+impl Port {
+    unsafe fn write(&self, value: u32) {
+        let port = self.0;
+        asm!("out dx, eax", in("dx") port, in("eax") value, options(nomem, nostack, preserves_flags));
+    }
 }
 
 // Exit utils
@@ -27,10 +44,8 @@ pub enum ExitCode {
 }
 
 pub fn exit(exit_code: ExitCode) {
-    use x86_64::instructions::port::Port;
-
     unsafe {
-        let mut port = Port::new(0xf4);
+        let port = Port(0xf4);
         port.write(exit_code as u32);
     }
 }
@@ -63,18 +78,14 @@ pub fn test_panic_handler(info: &PanicInfo) -> ! {
     serial_println!("[failed]");
     serial_println!("Panicked at: {}", info);
     exit(ExitCode::Failure);
-    loop {
-        hlt();
-    }
+    loop {}
 }
 
 #[cfg(test)]
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     test_main();
-    loop {
-        hlt();
-    }
+    loop {}
 }
 
 #[cfg(test)]

@@ -11,10 +11,27 @@ pub struct InterruptStackFrame {
     stack_segment: u64,
 }
 
+pub extern "x86-interrupt" fn debug_exception_handler(stack_frame: InterruptStackFrame) {
+    println!("EXCEPTION: DEBUG");
+    println!("{:#?}", stack_frame);
+}
+
+pub extern "x86-interrupt" fn nmi_handler(stack_frame: InterruptStackFrame, error_code: u64) {
+    println!("EXCEPTION: NON-MASKABLE HARDWARE INTERRUPT");
+    println!("ERROR CODE: {:#?}", error_code);
+    println!("{:#?}", stack_frame);
+    panic!();
+}
+
+pub extern "x86-interrupt" fn breakpoint_exception_handler(stack_frame: InterruptStackFrame) {
+    println!("EXCEPTION: BREAKPOINT");
+    println!("{:#?}", stack_frame);
+}
+
 pub extern "x86-interrupt" fn double_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
-) {
+) -> ! {
     println!("EXCEPTION: DOUBLE FAULT");
     println!("ERROR CODE: {:#?}", error_code);
     println!("{:#?}", stack_frame);
@@ -41,7 +58,7 @@ pub extern "x86-interrupt" fn stack_segment_fault_handler(
     panic!();
 }
 
-extern "x86-interrupt" fn general_protection_fault_handler(
+pub extern "x86-interrupt" fn general_protection_fault_handler(
     stack_frame: InterruptStackFrame,
     error_code: u64,
 ) {

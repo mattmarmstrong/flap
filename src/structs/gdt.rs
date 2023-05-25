@@ -3,43 +3,12 @@ use core::mem::size_of;
 
 use lazy_static::lazy_static;
 
-use crate::addr::VirtualAddress;
-
-const INTERRUPT_STACK_SIZE: usize = 1 << 14; // 16KB
-
-#[derive(Debug, Clone, Copy)]
-#[repr(C, packed(4))]
-pub struct TaskStateSegment {
-    reserved_1: u32,
-    privilege_stack_table: [VirtualAddress; 3],
-    reserved_2: u64,
-    interrupt_stack_table: [VirtualAddress; 7],
-    reserved_3: u64,
-    reserved_4: u16,
-    iomap_base: u16,
-}
-
-impl TaskStateSegment {
-    pub fn new() -> TaskStateSegment {
-        TaskStateSegment {
-            reserved_1: 0,
-            privilege_stack_table: [VirtualAddress::zero(); 3],
-            reserved_2: 0,
-            interrupt_stack_table: [VirtualAddress::zero(); 7],
-            reserved_3: 0,
-            reserved_4: 0,
-            iomap_base: (size_of::<TaskStateSegment>() - 1) as u16,
-        }
-    }
-
-    pub fn pointer(&self) -> VirtualAddress {
-        VirtualAddress::try_new(self as *const _ as u64).unwrap()
-    }
-}
+use crate::memory::address::VirtualAddress;
+use crate::structs::tss::{TaskStateSegment, TSS};
 
 #[derive(Debug, Clone, Copy)]
 pub struct GlobalDescriptorTable {
-    table: [SegmentDescriptor; 7],
+    descriptor_table: [SegmentDescriptor; 7],
 }
 
 #[repr(C, packed(2))]
@@ -51,29 +20,29 @@ pub struct GdtPointer {
 impl GlobalDescriptorTable {
     fn new() -> GlobalDescriptorTable {
         GlobalDescriptorTable {
-            table: [SegmentDescriptor::null_segment_descriptor(); 7],
+            descriptor_table: [SegmentDescriptor::null_segment_descriptor(); 7],
         }
     }
 
     fn add_entry(&mut self, index: usize, segment_desc: SegmentDescriptor) -> SegmentSelector {
-        self.table[index] = segment_desc;
+        self.descriptor_table[index] = segment_desc;
         SegmentSelector::new(index as u16, segment_desc.get_requested_privilege_level())
     }
 
     fn pointer(&self) -> GdtPointer {
-        let limit = (self.table.len() * size_of::<u64>() - 1) as u16;
-        let base = VirtualAddress(self.table.as_ptr() as u64);
+        let limit = (self.descriptor_table.len() * size_of::<SegmentDescriptor>() - 1) as u16;
+        let base = VirtualAddress::new(self.descriptor_table.as_ptr() as u64);
         GdtPointer { limit, base }
     }
 
-    pub unsafe fn load(gdt_ptr: &GdtPointer) {
+    pub unsafe fn load_gdt(gdt_ptr: &GdtPointer) {
         asm!("lgdt [{}]", in(reg) gdt_ptr, options(readonly, nostack, preserves_flags))
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
-struct SegmentDescriptor {
+pub struct SegmentDescriptor {
     limit_low: u16,
     base_low: u16,
     base_middle: u8,
@@ -178,30 +147,15 @@ impl SegmentSelector {
 }
 
 pub struct Selectors {
-    kernel_code_segment: SegmentSelector,
-    kernel_data_segment: SegmentSelector,
-    user_code_segment: SegmentSelector,
-    user_data_segment: SegmentSelector,
-    tss_system_segment: SegmentSelector,
+    pub kernel_code_segment: SegmentSelector,
+    pub kernel_data_segment: SegmentSelector,
+    pub user_code_segment: SegmentSelector,
+    pub user_data_segment: SegmentSelector,
+    pub tss_system_segment: SegmentSelector,
 }
 
 lazy_static! {
-    static ref TSS: TaskStateSegment = {
-        let mut tss = TaskStateSegment::new();
-        // Intel Software Developer's Manual - section 6.14.5
-        for ist_index in 0..6 {
-        tss.interrupt_stack_table[ist_index] = {
-            static mut STACK:[u8; INTERRUPT_STACK_SIZE] = [0; INTERRUPT_STACK_SIZE];
-            let stack_ptr: u64 = unsafe { &STACK as *const _ as u64 } + INTERRUPT_STACK_SIZE as u64; // stacks grow downward on x86
-            VirtualAddress::try_new(stack_ptr).unwrap()
-        };
-    }
-        tss
-    };
-}
-
-lazy_static! {
-    static ref GDT: (GlobalDescriptorTable, Selectors) = {
+    pub static ref GDT: (GlobalDescriptorTable, Selectors) = {
         let mut gdt = GlobalDescriptorTable::new();
         // the null segment descriptor is left alone as the 0th entry of the GDT
         let kernel_code_segment =
@@ -214,19 +168,19 @@ lazy_static! {
             SegmentDescriptor::tss_system_segment(&TSS);
         let tss_system_segment = gdt.add_entry(5, tss_system_segment_low);
         let _ = gdt.add_entry(6, tss_system_segment_high); // we shouldn't ever need to reference the high segment of a system segment
-        let segments = Selectors {
+        let selectors = Selectors {
             kernel_code_segment,
             kernel_data_segment,
             user_code_segment,
             user_data_segment,
             tss_system_segment,
         };
-        (gdt, segments)
+        (gdt, selectors)
     };
 }
 
-pub fn init() {
+pub fn init_gdt() {
     unsafe {
-        GlobalDescriptorTable::load(&GDT.0.pointer());
+        GlobalDescriptorTable::load_gdt(&GDT.0.pointer());
     }
 }

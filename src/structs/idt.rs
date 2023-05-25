@@ -1,67 +1,43 @@
+use core::arch::asm;
+use core::mem::size_of;
+
 use lazy_static::lazy_static;
 
-use crate::{addr::VirtualAddress, structs::gdt::SegmentSelector};
+use crate::interrupts::consts::*;
+use crate::interrupts::interrupt_handlers::*;
+use crate::memory::address::VirtualAddress;
+use crate::structs::gdt::{SegmentSelector, GDT};
+use crate::structs::tss::*;
 
 #[derive(Debug, Clone)]
 #[repr(C, align(16))]
 pub struct InterruptDescriptorTable {
-    // These are all the reserved, architecture defined interrupts
-    pub divide_by_zero_descriptor: GateDescriptor,
-    pub debug_exception_descriptor: GateDescriptor,
-    pub nmi_interrupt_descriptor: GateDescriptor,
-    pub breakpoint_descriptor: GateDescriptor,
-    pub overflow_descriptor: GateDescriptor,
-    pub bound_range_exceeded_descriptor: GateDescriptor,
-    pub invalid_opcode_descriptor: GateDescriptor,
-    pub device_not_available_descriptor: GateDescriptor,
-    pub double_fault_descriptor: GateDescriptor,
-    pub coprocessor_segment_overrun_descriptor: GateDescriptor,
-    pub invalid_tss_descriptor: GateDescriptor,
-    pub segment_not_present_descriptor: GateDescriptor,
-    pub stack_segment_fault_descriptor: GateDescriptor,
-    pub general_protection_descriptor: GateDescriptor,
-    pub page_fault_descriptor: GateDescriptor,
-    reserved_int_15: GateDescriptor, // this should never be used
-    pub x87_floating_point_error_descriptor: GateDescriptor,
-    pub alignment_check_descriptor: GateDescriptor,
-    pub machine_check_descriptor: GateDescriptor,
-    pub simd_floating_point_exception_descriptor: GateDescriptor,
-    pub virtualization_exception: GateDescriptor,
-    reserved_int_21_to_31: [GateDescriptor; 10],
-    // As the name suggests, these are free to define. TODO: device I/O
-    pub user_defined_interrupts: [GateDescriptor; 256 - 32],
+    pub descriptor_table: [GateDescriptor; 256],
 }
 
 impl InterruptDescriptorTable {
     fn new() -> Self {
+        // These are all of the gates I have defined (very basic) handlers for so far.
         InterruptDescriptorTable {
-            // The types of some of these are wrong -> https://wiki.osdev.org/Interrupt_Descriptor_Table
-            divide_by_zero_descriptor: GateDescriptor::new(),
-            debug_exception_descriptor: GateDescriptor::new(),
-            nmi_interrupt_descriptor: GateDescriptor::new(),
-            breakpoint_descriptor: GateDescriptor::new(),
-            overflow_descriptor: GateDescriptor::new(),
-            bound_range_exceeded_descriptor: GateDescriptor::new(),
-            invalid_opcode_descriptor: GateDescriptor::new(),
-            device_not_available_descriptor: GateDescriptor::new(),
-            double_fault_descriptor: GateDescriptor::new(),
-            coprocessor_segment_overrun_descriptor: GateDescriptor::new(),
-            invalid_tss_descriptor: GateDescriptor::new(),
-            segment_not_present_descriptor: GateDescriptor::new(),
-            stack_segment_fault_descriptor: GateDescriptor::new(),
-            general_protection_descriptor: GateDescriptor::new(),
-            page_fault_descriptor: GateDescriptor::new(),
-            reserved_int_15: GateDescriptor::new(), // this should never be used
-            x87_floating_point_error_descriptor: GateDescriptor::new(),
-            alignment_check_descriptor: GateDescriptor::new(),
-            machine_check_descriptor: GateDescriptor::new(),
-            simd_floating_point_exception_descriptor: GateDescriptor::new(),
-            virtualization_exception: GateDescriptor::new(),
-            reserved_int_21_to_31: [GateDescriptor::new(); 10],
-
-            user_defined_interrupts: [GateDescriptor::new(); 224],
+            descriptor_table: [GateDescriptor::new(GateOptions::minimal()); 256],
         }
     }
+
+    fn pointer(&self) -> IdtPointer {
+        let limit = (self.descriptor_table.len() * size_of::<GateDescriptor>() - 1) as u16;
+        let base = VirtualAddress::new(self.descriptor_table.as_ptr() as u64);
+        IdtPointer { limit, base }
+    }
+
+    pub unsafe fn load_idt(idt_ptr: &IdtPointer) {
+        asm!("lidt [{}]", in(reg) idt_ptr, options(readonly, nostack, preserves_flags))
+    }
+}
+
+#[repr(C, packed(2))]
+pub struct IdtPointer {
+    limit: u16,
+    base: VirtualAddress,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -76,18 +52,18 @@ pub struct GateDescriptor {
 }
 
 impl GateDescriptor {
-    fn new() -> Self {
+    fn new(gate_options: GateOptions) -> Self {
         GateDescriptor {
             offset_low: 0,
-            segment: SegmentSelector::new(0, 0), // This points at the null segment
-            gate_options: GateOptions::minimal(),
+            segment: GDT.1.kernel_code_segment,
+            gate_options,
             offset_middle: 0,
             offset_high: 0,
             reserved: 0,
         }
     }
 
-    fn set_handler_address(&mut self, handler_address: VirtualAddress) -> &mut Self {
+    fn set_handler_address(mut self, handler_address: VirtualAddress) -> Self {
         self.offset_low = (handler_address.0 & 0x0000_0000_0000_FFFF) as u16;
         self.offset_middle = ((handler_address.0 & 0x0000_0000_FFFF_0000) >> 16) as u16;
         self.offset_high = ((handler_address.0 & 0xFFFF_FFFF_0000_0000) >> 32) as u32;
@@ -104,49 +80,89 @@ impl GateOptions {
         GateOptions(0x0E00)
     }
 
-    fn new(present: bool, interruptable: bool) -> Self {
-        let mut options = GateOptions::minimal();
-        options
-            .set_present(present)
-            .disable_interrupts(interruptable);
-        options
-    }
-
-    fn set_present(&mut self, present: bool) -> &mut Self {
-        match present {
-            false => self.0 = (self.0 << 1) >> 1,
-            true => self.0 |= 0x8000,
-        }
+    fn set_present(mut self) -> Self {
+        self.0 |= 0x8000;
         self
     }
 
-    fn set_stack_index(&mut self, stack_index: u16) -> &mut Self {
-        if stack_index > 6 {
-            panic!("Invalid stack pointer passed to interrupt handler")
-        } else {
-            self.0 = (self.0 & 0xFFF8) | (stack_index + 1);
-        }
+    fn dpl_0(mut self) -> Self {
+        self.0 &= 0x9FFF;
         self
     }
 
-    fn set_privilege_level(&mut self, dpl: u16) -> &mut Self {
-        let privilege_mask: u16 = 0x0003;
-        self.0 = (self.0 & 0x9FFF) | ((dpl & privilege_mask) << 13); // 0 <= privilege level <= 3
+    fn dpl_3(mut self) -> Self {
+        self.0 &= 0xCFFF;
         self
     }
 
-    fn disable_interrupts(&mut self, disable: bool) -> &mut Self {
-        match disable {
-            false => self.0 |= 0x0100,
-            true => self.0 &= !0x0100,
-        }
+    fn enable_interrupts(mut self) -> Self {
+        self.0 |= 0x0100;
+        self
+    }
+
+    fn default() -> Self {
+        GateOptions::minimal()
+            .set_present()
+            .dpl_0()
+            .enable_interrupts()
+    }
+
+    fn set_stack_index(mut self, stack_index: usize) -> Self {
+        debug_assert!(stack_index < 6);
+        self.0 = (self.0 & 0xFFF8) | ((stack_index + 1) as u16);
         self
     }
 }
 
 lazy_static! {
-    static ref IDT: InterruptDescriptorTable = {
+    pub static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
+        let debug_exception_gate_descriptor =
+            GateDescriptor::new(GateOptions::default().set_stack_index(DEBUG_STACK_TABLE_INDEX))
+                .set_handler_address(VirtualAddress::new(
+                    (debug_exception_handler as usize) as u64,
+                ));
+        let nmi_gate_descriptor =
+            GateDescriptor::new(GateOptions::default().set_stack_index(NMI_STACK_TABLE_INDEX))
+                .set_handler_address(VirtualAddress::new((nmi_handler as usize) as u64));
+        let breakpoint_gate_descriptor = GateDescriptor::new(GateOptions::default())
+            .set_handler_address(VirtualAddress::new(
+                (breakpoint_exception_handler as usize) as u64,
+            ));
+        let segment_not_present_descriptor = GateDescriptor::new(GateOptions::default())
+            .set_handler_address(VirtualAddress::new(
+                (segment_not_present_handler as usize) as u64,
+            ));
+        let double_fault_descriptor = GateDescriptor::new(
+            GateOptions::default().set_stack_index(DOUBLE_FAULT_STACK_TABLE_INDEX),
+        )
+        .set_handler_address(VirtualAddress::new((double_fault_handler as usize) as u64));
+
+        let stack_segment_fault_descriptor = GateDescriptor::new(
+            GateOptions::default().set_stack_index(STACK_SEGMENT_FAULT_STACK_TABLE_INDEX),
+        )
+        .set_handler_address(VirtualAddress::new(
+            (stack_segment_fault_handler as usize) as u64,
+        ));
+        let general_protection_fault_gate_descriptor = GateDescriptor::new(
+            GateOptions::default().set_stack_index(GENERAL_PROTECTION_STACK_TABLE_INDEX),
+        )
+        .set_handler_address(VirtualAddress::new(
+            (general_protection_fault_handler as usize) as u64,
+        ));
+        idt.descriptor_table[DEBUG_EXCEPTION] = debug_exception_gate_descriptor;
+        idt.descriptor_table[NMI_INTERRUPT] = nmi_gate_descriptor;
+        idt.descriptor_table[BREAKPOINT] = breakpoint_gate_descriptor;
+        idt.descriptor_table[SEGMENT_NOT_PRESENT] = segment_not_present_descriptor;
+        idt.descriptor_table[DOUBLE_FAULT] = double_fault_descriptor;
+        idt.descriptor_table[STACK_SEGMENT_FAULT] = stack_segment_fault_descriptor;
+        idt.descriptor_table[GENERAL_PROTECTION] = general_protection_fault_gate_descriptor;
         idt
     };
+}
+
+pub fn init_idt() {
+    unsafe {
+        InterruptDescriptorTable::load_idt(&IDT.pointer());
+    }
 }

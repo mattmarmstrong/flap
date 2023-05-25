@@ -11,10 +11,13 @@ impl VirtualAddress {
         VirtualAddress(0)
     }
 
-    #[inline]
-    pub fn try_new(addr: u64) -> Result<Self, InvalidVirtualAddress> {
+    pub fn new(addr: u64) -> VirtualAddress {
+        VirtualAddress::try_new(addr).unwrap()
+    }
+
+    fn try_new(addr: u64) -> Result<Self, InvalidVirtualAddress> {
         match addr >> 48 {
-            0 | 0xffff => Ok(VirtualAddress(addr)),
+            0 | 0xFFFF => Ok(VirtualAddress(addr)),
             _ => Err(InvalidVirtualAddress(addr)),
         }
     }
