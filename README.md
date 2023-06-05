@@ -32,5 +32,6 @@ https://github.com/avsm/xen-minios/
 
 https://github.com/cia-foundation/TempleOS
 
+https://github.com/cs61/cs61-psets-f17
 
 
