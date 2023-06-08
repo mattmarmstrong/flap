@@ -7,14 +7,11 @@
 use core::panic::PanicInfo;
 
 use flap_os::{exit, serial_println, ExitCode};
-use x86_64::instructions::hlt;
 
 #[no_mangle]
 pub extern "C" fn _start() -> ! {
     test_main();
-    loop {
-        hlt();
-    }
+    loop {}
 }
 
 pub fn test_runner(tests: &[&dyn Fn()]) {
@@ -31,7 +28,5 @@ pub fn test_runner(tests: &[&dyn Fn()]) {
 fn panic(_info: &PanicInfo) -> ! {
     serial_println!("[ok]");
     exit(ExitCode::Success);
-    loop {
-        hlt();
-    }
+    loop {}
 }

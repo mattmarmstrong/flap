@@ -115,6 +115,8 @@ impl GateOptions {
 }
 
 lazy_static! {
+
+    // This code is an eye-sore, clean this up
     pub static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         let debug_exception_gate_descriptor =

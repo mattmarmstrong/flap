@@ -7,7 +7,20 @@
 
 use core::panic::PanicInfo;
 
+use bootloader::{entry_point, BootInfo};
+
+use flap_os::memory::paging::page_table::read_cr3;
 use flap_os::println;
+entry_point!(kernel_main);
+
+fn kernel_main(_boot_info: &'static BootInfo) -> ! {
+    flap_os::kernel_init();
+
+    println!("CR3 value after boot: {:#?}", read_cr3());
+    #[cfg(test)]
+    test_main();
+    loop {}
+}
 
 #[cfg(not(test))]
 #[panic_handler]
@@ -20,14 +33,4 @@ fn panic(info: &PanicInfo) -> ! {
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
     flap_os::test_panic_handler(info)
-}
-
-#[no_mangle]
-pub extern "C" fn _start() -> ! {
-    flap_os::kernel_init();
-
-    #[cfg(test)]
-    test_main();
-
-    loop {}
 }
